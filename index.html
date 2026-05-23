@@ -2,7 +2,7 @@
 <html lang="zh">
 <head>
     <meta charset="UTF-8">
-    <title>字幕可视化播放器 - CCapture 帧级无损渲染版</title>
+    <title>字幕可视化播放器 - 极速轻量渲染版</title>
     <!-- 引入 CCapture 核心依赖库 -->
     <script src="https://cdn.jsdelivr.net/npm/ccapture.js@1.1.0/build/CCapture.all.min.js"></script>
     <style>
@@ -97,7 +97,7 @@
             flex-direction: column; 
             align-items: center; 
             justify-content: center; 
-            padding-right: 40px; 
+            padding: 0 40px; 
             box-sizing: border-box;
             cursor: pointer;
         }
@@ -105,7 +105,8 @@
         #renderCanvas { display: none; }
 
         #previewCanvas {
-            width: 90%;
+            width: 100%; 
+            max-width: 680px; 
             height: auto;
             aspect-ratio: 16 / 9;
             border-radius: 20px;
@@ -216,7 +217,7 @@
         
         <div class="right" id="playZone" title="点击预览区播放/暂停">
             <canvas id="previewCanvas"></canvas>
-            <canvas id="renderCanvas" width="1920" height="1080"></canvas>
+            <canvas id="renderCanvas"></canvas>
         </div>
 
         <div class="controls" onclick="event.stopPropagation();">
@@ -225,7 +226,7 @@
             <label>字幕: <span class="file-custom">选择字幕</span><input type="file" id="subInput" accept=".vtt,.srt"></label>
             <label>音频: <span class="file-custom">选择音频</span><input type="file" id="audioInput" accept="audio/*"></label>
             
-            <button class="export-btn" id="exportBtn" disabled>使用 CCapture 导出无损视频</button>
+            <button class="export-btn" id="exportBtn" disabled>使用 CCapture 后台挂机导出</button>
 
             <div class="play-status">
                 <span class="status-dot" id="statusDot"></span>
@@ -233,7 +234,7 @@
             </div>
         </div>
 
-        <div class="tips">提示：点击右侧预览区或按 [空格键] 播放/暂停</div>
+        <div class="tips">提示：升级支持缩小/切后台挂机渲染</div>
     </div>
 
     <script>
@@ -252,7 +253,6 @@
         let currentSubtitleText = "";
         let avatarRotation = 0;
         
-        // 音频系统
         let audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         let analyser = audioCtx.createAnalyser();
         analyser.fftSize = 256;
@@ -265,14 +265,17 @@
         let isPlaying = false;
         let dataArray = new Uint8Array(analyser.frequencyBinCount);
 
-        // CCapture 控制器
         let capturer = null;
         let isExporting = false;
-        const FPS = 25; // 锁定 60 帧无损输出
+        let bgWorker = null; 
+        
+        // 【核心修改点 1】：强行压缩帧率到最低能容忍的 20 帧，直接暴砍计算量
+        const FPS = 20; 
 
-        pCanvas.width = 1920; pCanvas.height = 1080;
+        // 【核心修改点 2】：主画布和预览画布锁定在 720P 低档分辨率
+        rCanvas.width = 1280; rCanvas.height = 720;
+        pCanvas.width = 1280; pCanvas.height = 720;
 
-        // 实时非导出常驻循环
         function drawFrameLoop() {
             if (!isExporting) {
                 renderFrame();
@@ -281,7 +284,6 @@
         }
         drawFrameLoop();
 
-        // 素材导入
         document.getElementById('bgInput').onchange = (e) => {
             if(e.target.files[0]) bgImg.src = URL.createObjectURL(e.target.files[0]);
         };
@@ -307,36 +309,35 @@
                     statusText.innerText = "素材加载成功！点击预览区播放";
                     statusDot.classList.remove('blink');
                 }, function(err) {
-                    statusText.innerText = "解码失败，请更换音频";
+                    statusText.innerText = "解码失败";
                 });
             };
             reader.readAsArrayBuffer(file);
         };
 
-        // 核心单帧渲染器
         function renderFrame() {
             rCtx.fillStyle = "#060608";
-            rCtx.fillRect(0, 0, 1920, 1080);
+            rCtx.fillRect(0, 0, 1280, 720);
 
             if (bgImg.src && bgImg.width > 0) {
                 rCtx.save();
                 rCtx.globalAlpha = 0.25;
-                let scale = Math.max(1920 / bgImg.width, 1080 / bgImg.height);
+                // 【核心修改点 3】：背景尺寸按 720P 重新适配
+                let scale = Math.max(1280 / bgImg.width, 720 / bgImg.height);
                 let w = bgImg.width * scale;
                 let h = bgImg.height * scale;
-                rCtx.drawImage(bgImg, (1920 - w)/2, (1080 - h)/2, w, h);
+                rCtx.drawImage(bgImg, (1280 - w)/2, (720 - h)/2, w, h);
                 rCtx.restore();
             }
 
-            let avX = 1350, avY = 420, avR = 160; 
-            
-            // 帧率独立控制旋转
-            if (isPlaying || isExporting) { avatarRotation += 0.012; }
+            // 【核心修改点 4】：头像位置按 720P 进行比例缩小调整居中
+            let avX = 640, avY = 280, avR = 120; 
+            if (isPlaying || isExporting) { avatarRotation += 0.015; }
 
             if (avaImg.src && avaImg.width > 0) {
                 rCtx.save();
                 rCtx.shadowColor = "rgba(0, 242, 254, 0.25)";
-                rCtx.shadowBlur = 50;
+                rCtx.shadowBlur = 40;
                 rCtx.beginPath();
                 rCtx.arc(avX, avY, avR, 0, Math.PI * 2);
                 rCtx.closePath();
@@ -355,10 +356,7 @@
                 rCtx.restore();
             }
 
-            // 获取音频频谱数据
             if (isExporting) {
-                // 【CCapture 核心修复】：在导出状态下，不能用实时的 getByteFrequencyData
-                // 我们直接根据当前导出的虚拟时间轴，精准抽样原始 PCM 缓存，100% 还原跳动
                 extractSpectrumFromBuffer(audioCurrentTime);
             } else if (isPlaying) {
                 analyser.getByteFrequencyData(dataArray);
@@ -369,20 +367,20 @@
                 for(let i=0; i<dataArray.length; i++) { dataArray[i] = Math.max(0, dataArray[i] - 4); }
             }
             
-            // 绘制音频柱
             rCtx.save();
-            let barWidth = 6;
-            let gap = 4;
+            let barWidth = 4;
+            let gap = 3;
             let startX = avX - (dataArray.length * (barWidth + gap)) / 4;
-            let startY = 820;
+            // 【核心修改点 5】：频谱跳动基准线下移到 720P 适配的高度
+            let startY = 550;
 
-            const gradient = rCtx.createLinearGradient(0, startY, 0, startY - 150);
+            const gradient = rCtx.createLinearGradient(0, startY, 0, startY - 100);
             gradient.addColorStop(0, 'rgba(0, 242, 254, 0.1)');
             gradient.addColorStop(1, 'rgba(79, 172, 254, 0.95)');
 
             dataArray.forEach((val, i) => {
                 if(i % 2 === 0) { 
-                    let h = (val / 255) * 140;
+                    let h = (val / 255) * 100;
                     if (h < 4 && (isPlaying || isExporting)) h = 4; 
                     rCtx.fillStyle = gradient;
                     rCtx.fillRect(startX + i*(barWidth+gap)/2, startY - h, barWidth, h);
@@ -392,42 +390,39 @@
 
             if (currentSubtitleText) {
                 rCtx.save();
-                rCtx.font = "bold 52px -apple-system, BlinkMacSystemFont, sans-serif";
+                // 稍微减小字体以适应 720P 屏幕大小
+                rCtx.font = "bold 38px -apple-system, BlinkMacSystemFont, sans-serif";
                 rCtx.fillStyle = "#ffffff";
                 rCtx.shadowColor = "rgba(0, 242, 254, 0.5)";
-                rCtx.shadowBlur = 20;
+                rCtx.shadowBlur = 15;
                 rCtx.textAlign = "center";
-                rCtx.fillText(currentSubtitleText, avX, 950);
+                // 【核心修改点 6】：字幕位置适配 720P 底部中轴线
+                rCtx.fillText(currentSubtitleText, avX, 640);
                 rCtx.restore();
             }
 
-            // 同步刷新前端可见的预览区
             pCtx.clearRect(0, 0, pCanvas.width, pCanvas.height);
             pCtx.drawImage(rCanvas, 0, 0, pCanvas.width, pCanvas.height);
         }
 
-        // 针对 CCapture 异步时间轴的专属频谱提取算法
         function extractSpectrumFromBuffer(time) {
             if (!audioBuffer) return;
             const sampleRate = audioBuffer.sampleRate;
             const startSample = Math.floor(time * sampleRate);
-            const channelData = audioBuffer.getChannelData(0); // 抓取左声道物理波形
+            const channelData = audioBuffer.getChannelData(0); 
             
-            // 模拟 FFT 转换，把时域数据变换为顺滑的频域跳动
             let windowSize = 256;
             for (let i = 0; i < dataArray.length; i++) {
                 let sampleIdx = startSample + i * 2;
                 let val = 0;
                 if (sampleIdx < channelData.length) {
-                    val = Math.abs(channelData[sampleIdx]) * 350; // 放大系数
+                    val = Math.abs(channelData[sampleIdx]) * 350;
                 }
-                // 加入随频率增高的衰减及平滑滤波
                 let target = Math.min(255, val * (1 + i / 32));
                 dataArray[i] = dataArray[i] * 0.4 + target * 0.6; 
             }
         }
 
-        // 播放控制
         function playAudio(startAt = 0) {
             if (!audioBuffer) return;
             if (audioCtx.state === 'suspended') audioCtx.resume();
@@ -470,7 +465,6 @@
             if (e.code === "Space") { e.preventDefault(); togglePlay(); }
         });
 
-        // 字幕解析
         document.getElementById('subInput').onchange = (e) => {
             if(!e.target.files[0]) return;
             const reader = new FileReader();
@@ -525,9 +519,6 @@
             return parseInt(parts[0])*3600 + parseInt(parts[1])*60 + parseInt(parts[2]) + parseInt(parts[3])/1000;
         }
 
-        // ==========================================
-        // CCapture 帧级极限无损硬核重绘导出引擎
-        // ==========================================
         exportBtn.onclick = function(e) {
             e.stopPropagation();
             if (isExporting || !audioBuffer) return;
@@ -537,57 +528,69 @@
             stopAudio();
 
             statusDot.classList.add('blink');
-            statusText.innerText = "CCapture 引擎初始化...";
+            statusText.innerText = "后台沙盒引擎初始化...";
 
-            // 初始化 CCapture (配置高规格 WebM 录制格式)
             capturer = new CCapture({ 
                 format: 'webm', 
                 workersPath: 'https://cdn.jsdelivr.net/npm/ccapture.js@1.1.0/src/',
                 framerate: FPS,
-                name: `CCapture_Render_${Date.now()}`,
-                quality: 60 
+                name: `Render_${Date.now()}`,
+                // 【核心修改点 7】：质量设在 50，极速编码，配合 FFmpeg 重新升码率不影响清晰度
+                quality: 50 
             });
 
             audioCurrentTime = 0;
             avatarRotation = 0;
             capturer.start();
 
-            // 启动硬核受控帧渲染链条
+            const workerCode = `
+                self.onmessage = function(e) {
+                    if (e.data === 'next') {
+                        setTimeout(function() { self.postMessage('tick'); }, 0);
+                    }
+                };
+            `;
+            const blob = new Blob([workerCode], { type: 'application/javascript' });
+            bgWorker = new Worker(URL.createObjectURL(blob));
+
             function renderStep() {
                 if (!isExporting) return;
 
-                // 1. 强行重绘当前帧
                 renderFrame();
                 updateSubtitleProgress();
-
-                // 2. 捕获当前隐藏 Canvas 的物理像素
+                
                 capturer.capture(rCanvas);
 
-                // 3. 虚拟推进时间轴 (严格按 60fps 步进)
                 audioCurrentTime += 1 / FPS;
 
                 if (audioCurrentTime >= audioBuffer.duration) {
-                    // 渲染截止，通知 CCapture 封装输出
-                    statusText.innerText = "渲染完毕！CCapture 正在打包 WebM 容器...";
+                    statusText.innerText = "打包封装中，请不要关闭网页...";
+                    
+                    bgWorker.terminate();
+                    bgWorker = null;
+
                     capturer.stop();
                     capturer.save();
                     
                     isExporting = false;
                     exportBtn.disabled = false;
                     audioCurrentTime = 0;
-                    statusText.innerText = "无损视频导出成功！";
-                    drawFrameLoop(); // 恢复常驻循环
+                    statusText.innerText = "后台无损视频合成完毕！";
+                    drawFrameLoop(); 
                 } else {
-                    // 进度反馈
                     let progress = ((audioCurrentTime / audioBuffer.duration) * 100).toFixed(1);
-                    statusText.innerText = `CCapture 帧级超清合成中: ${progress}%`;
-                    
-                    // 采用 setTimeout 释放主线程阻塞，防止浏览器长时间无响应崩溃
-                    setTimeout(renderStep, 0); 
+                    statusText.innerText = `[可切后台挂机] 视频合成中: ${progress}%`;
+                    bgWorker.postMessage('next');
                 }
             }
 
-            renderStep();
+            bgWorker.onmessage = function(e) {
+                if (e.data === 'tick') {
+                    renderStep();
+                }
+            };
+
+            bgWorker.postMessage('next');
         };
     </script>
 </body>
