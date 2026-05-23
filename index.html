@@ -268,7 +268,7 @@
         // CCapture 控制器
         let capturer = null;
         let isExporting = false;
-        const FPS = 60; // 锁定 60 帧无损输出
+        const FPS = 25; // 锁定 60 帧无损输出
 
         pCanvas.width = 1920; pCanvas.height = 1080;
 
@@ -545,7 +545,7 @@
                 workersPath: 'https://cdn.jsdelivr.net/npm/ccapture.js@1.1.0/src/',
                 framerate: FPS,
                 name: `CCapture_Render_${Date.now()}`,
-                quality: 100 
+                quality: 60 
             });
 
             audioCurrentTime = 0;
