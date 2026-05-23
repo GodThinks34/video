@@ -274,7 +274,7 @@
         let bgWorker = null; 
         
         // 【修改点】 提升至 25 帧
-        const FPS = 25;
+        const FPS = 15;
         // 【修改点】 画布尺寸提升至 1080P 标准尺寸 (1920x1080)
         rCanvas.width = 1920; rCanvas.height = 1080;
         pCanvas.width = 1920; pCanvas.height = 1080;
@@ -579,7 +579,7 @@
                 workersPath: 'https://cdn.jsdelivr.net/npm/ccapture.js@1.1.0/src/',
                 framerate: FPS,
                 name: `Render_${Date.now()}`,
-                quality: 60 
+                quality: 50 
             });
             audioCurrentTime = 0;
             avatarRotation = 0;
