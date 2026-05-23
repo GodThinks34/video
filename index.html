@@ -2,7 +2,7 @@
 <html lang="zh">
 <head>
     <meta charset="UTF-8">
-    <title>字幕可视化播放器 - CCapture 后台防休眠渲染版</title>
+    <title>字幕可视化播放器 - 极速轻量渲染版</title>
     <!-- 引入 CCapture 核心依赖库 -->
     <script src="https://cdn.jsdelivr.net/npm/ccapture.js@1.1.0/build/CCapture.all.min.js"></script>
     <style>
@@ -97,7 +97,7 @@
             flex-direction: column; 
             align-items: center; 
             justify-content: center; 
-            padding: 0 40px; /* 修正：左右对称 padding，确保二层窗口完全居中 */
+            padding: 0 40px; 
             box-sizing: border-box;
             cursor: pointer;
         }
@@ -105,8 +105,8 @@
         #renderCanvas { display: none; }
 
         #previewCanvas {
-            width: 100%; /* 修正：撑满右侧对称容器 */
-            max-width: 680px; /* 锁死最大预览宽度，避免变形 */
+            width: 100%; 
+            max-width: 680px; 
             height: auto;
             aspect-ratio: 16 / 9;
             border-radius: 20px;
@@ -217,7 +217,7 @@
         
         <div class="right" id="playZone" title="点击预览区播放/暂停">
             <canvas id="previewCanvas"></canvas>
-            <canvas id="renderCanvas" width="1920" height="1080"></canvas>
+            <canvas id="renderCanvas"></canvas>
         </div>
 
         <div class="controls" onclick="event.stopPropagation();">
@@ -267,10 +267,14 @@
 
         let capturer = null;
         let isExporting = false;
-        let bgWorker = null; // 后台防休眠独立线程驱动器
-        const FPS = 25; 
+        let bgWorker = null; 
+        
+        // 【核心修改点 1】：强行压缩帧率到最低能容忍的 20 帧，直接暴砍计算量
+        const FPS = 20; 
 
-        pCanvas.width = 1920; pCanvas.height = 1080;
+        // 【核心修改点 2】：主画布和预览画布锁定在 720P 低档分辨率
+        rCanvas.width = 1280; rCanvas.height = 720;
+        pCanvas.width = 1280; pCanvas.height = 720;
 
         function drawFrameLoop() {
             if (!isExporting) {
@@ -313,26 +317,27 @@
 
         function renderFrame() {
             rCtx.fillStyle = "#060608";
-            rCtx.fillRect(0, 0, 1920, 1080);
+            rCtx.fillRect(0, 0, 1280, 720);
 
             if (bgImg.src && bgImg.width > 0) {
                 rCtx.save();
                 rCtx.globalAlpha = 0.25;
-                let scale = Math.max(1920 / bgImg.width, 1080 / bgImg.height);
+                // 【核心修改点 3】：背景尺寸按 720P 重新适配
+                let scale = Math.max(1280 / bgImg.width, 720 / bgImg.height);
                 let w = bgImg.width * scale;
                 let h = bgImg.height * scale;
-                rCtx.drawImage(bgImg, (1920 - w)/2, (1080 - h)/2, w, h);
+                rCtx.drawImage(bgImg, (1280 - w)/2, (720 - h)/2, w, h);
                 rCtx.restore();
             }
 
-            // 修正：将渲染中轴线（avX）直接设为 1920 / 2 = 960，实现绝对画布居中
-            let avX = 960, avY = 420, avR = 160; 
-            if (isPlaying || isExporting) { avatarRotation += 0.012; }
+            // 【核心修改点 4】：头像位置按 720P 进行比例缩小调整居中
+            let avX = 640, avY = 280, avR = 120; 
+            if (isPlaying || isExporting) { avatarRotation += 0.015; }
 
             if (avaImg.src && avaImg.width > 0) {
                 rCtx.save();
                 rCtx.shadowColor = "rgba(0, 242, 254, 0.25)";
-                rCtx.shadowBlur = 50;
+                rCtx.shadowBlur = 40;
                 rCtx.beginPath();
                 rCtx.arc(avX, avY, avR, 0, Math.PI * 2);
                 rCtx.closePath();
@@ -363,19 +368,19 @@
             }
             
             rCtx.save();
-            let barWidth = 6;
-            let gap = 4;
-            // 修正：重新校准频谱图跳动基准点，使其完全依附于 960 中心对称轴
+            let barWidth = 4;
+            let gap = 3;
             let startX = avX - (dataArray.length * (barWidth + gap)) / 4;
-            let startY = 820;
+            // 【核心修改点 5】：频谱跳动基准线下移到 720P 适配的高度
+            let startY = 550;
 
-            const gradient = rCtx.createLinearGradient(0, startY, 0, startY - 150);
+            const gradient = rCtx.createLinearGradient(0, startY, 0, startY - 100);
             gradient.addColorStop(0, 'rgba(0, 242, 254, 0.1)');
             gradient.addColorStop(1, 'rgba(79, 172, 254, 0.95)');
 
             dataArray.forEach((val, i) => {
                 if(i % 2 === 0) { 
-                    let h = (val / 255) * 140;
+                    let h = (val / 255) * 100;
                     if (h < 4 && (isPlaying || isExporting)) h = 4; 
                     rCtx.fillStyle = gradient;
                     rCtx.fillRect(startX + i*(barWidth+gap)/2, startY - h, barWidth, h);
@@ -385,13 +390,14 @@
 
             if (currentSubtitleText) {
                 rCtx.save();
-                rCtx.font = "bold 52px -apple-system, BlinkMacSystemFont, sans-serif";
+                // 稍微减小字体以适应 720P 屏幕大小
+                rCtx.font = "bold 38px -apple-system, BlinkMacSystemFont, sans-serif";
                 rCtx.fillStyle = "#ffffff";
                 rCtx.shadowColor = "rgba(0, 242, 254, 0.5)";
-                rCtx.shadowBlur = 20;
+                rCtx.shadowBlur = 15;
                 rCtx.textAlign = "center";
-                // 修正：字幕绘制基准点对齐 960 绝对中心
-                rCtx.fillText(currentSubtitleText, avX, 950);
+                // 【核心修改点 6】：字幕位置适配 720P 底部中轴线
+                rCtx.fillText(currentSubtitleText, avX, 640);
                 rCtx.restore();
             }
 
@@ -513,9 +519,6 @@
             return parseInt(parts[0])*3600 + parseInt(parts[1])*60 + parseInt(parts[2]) + parseInt(parts[3])/1000;
         }
 
-        // ========================================================
-        // 核心升级：通过 Web Worker 强行打破网页缩小/切后台休眠限制
-        // ========================================================
         exportBtn.onclick = function(e) {
             e.stopPropagation();
             if (isExporting || !audioBuffer) return;
@@ -532,18 +535,17 @@
                 workersPath: 'https://cdn.jsdelivr.net/npm/ccapture.js@1.1.0/src/',
                 framerate: FPS,
                 name: `Render_${Date.now()}`,
-                quality: 50 
+                // 【核心修改点 7】：质量设在 50，极速编码，配合 FFmpeg 重新升码率不影响清晰度
+                quality: 30 
             });
 
             audioCurrentTime = 0;
             avatarRotation = 0;
             capturer.start();
 
-            // 1. 构建完全运行在主线程之外的 Worker 独立计时代码
             const workerCode = `
                 self.onmessage = function(e) {
                     if (e.data === 'next') {
-                        // 使用无限速后台循环通知主线程推进
                         setTimeout(function() { self.postMessage('tick'); }, 0);
                     }
                 };
@@ -551,23 +553,19 @@
             const blob = new Blob([workerCode], { type: 'application/javascript' });
             bgWorker = new Worker(URL.createObjectURL(blob));
 
-            // 2. 核心渲染步进器
             function renderStep() {
                 if (!isExporting) return;
 
                 renderFrame();
                 updateSubtitleProgress();
                 
-                // 捕获像素数据
                 capturer.capture(rCanvas);
 
-                // 推进虚拟时间
                 audioCurrentTime += 1 / FPS;
 
                 if (audioCurrentTime >= audioBuffer.duration) {
                     statusText.innerText = "打包封装中，请不要关闭网页...";
                     
-                    // 销毁后台 Worker，防止内存泄漏
                     bgWorker.terminate();
                     bgWorker = null;
 
@@ -582,20 +580,16 @@
                 } else {
                     let progress = ((audioCurrentTime / audioBuffer.duration) * 100).toFixed(1);
                     statusText.innerText = `[可切后台挂机] 视频合成中: ${progress}%`;
-                    
-                    // 【关键修复点】：通知不受标签页降频限制的 Worker 发送下一个心跳
                     bgWorker.postMessage('next');
                 }
             }
 
-            // 3. 监听来自后台工作线程的独立脉冲
             bgWorker.onmessage = function(e) {
                 if (e.data === 'tick') {
                     renderStep();
                 }
             };
 
-            // 启动第一帧
             bgWorker.postMessage('next');
         };
     </script>
