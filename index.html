@@ -2,7 +2,7 @@
 <html lang="zh">
 <head>
     <meta charset="UTF-8">
-    <title>字幕可视化播放器 - 极速轻量渲染版 (左右布局)</title>
+    <title>字幕可视化播放器 - 1080P 高清左右布局版</title>
     <script src="https://cdn.jsdelivr.net/npm/ccapture.js@1.1.0/build/CCapture.all.min.js"></script>
     <style>
         :root {
@@ -252,8 +252,8 @@
         
         // 字幕渲染核心状态
         let currentSubtitleText = "";
-        let currentSubIndex = -1;  // 当前激活的字幕索引
-        let lyricScrollY = 0;      // 画布上的字幕滚动偏移量
+        let currentSubIndex = -1; 
+        let lyricScrollY = 0;     
 
         let avatarRotation = 0;
         
@@ -273,9 +273,11 @@
         let isExporting = false;
         let bgWorker = null; 
         
-        const FPS = 20;
-        rCanvas.width = 1280; rCanvas.height = 720;
-        pCanvas.width = 1280; pCanvas.height = 720;
+        // 【修改点】 提升至 25 帧
+        const FPS = 25;
+        // 【修改点】 画布尺寸提升至 1080P 标准尺寸 (1920x1080)
+        rCanvas.width = 1920; rCanvas.height = 1080;
+        pCanvas.width = 1920; pCanvas.height = 1080;
 
         function drawFrameLoop() {
             if (!isExporting) {
@@ -317,22 +319,21 @@
         };
 
         function renderFrame() {
-            // 1. 绘制纯色背景
+            // 1. 绘制纯色背景 (适配 1920x1080)
             rCtx.fillStyle = "#060608";
-            rCtx.fillRect(0, 0, 1280, 720);
+            rCtx.fillRect(0, 0, 1920, 1080);
 
-            // 2. 绘制图片背景 (毛玻璃暗化效果)
+            // 2. 绘制图片背景
             if (bgImg.src && bgImg.width > 0) {
                 rCtx.save();
                 rCtx.globalAlpha = 0.25;
-                let scale = Math.max(1280 / bgImg.width, 720 / bgImg.height);
+                let scale = Math.max(1920 / bgImg.width, 1080 / bgImg.height);
                 let w = bgImg.width * scale;
                 let h = bgImg.height * scale;
-                rCtx.drawImage(bgImg, (1280 - w)/2, (720 - h)/2, w, h);
+                rCtx.drawImage(bgImg, (1920 - w)/2, (1080 - h)/2, w, h);
                 rCtx.restore();
             }
 
-            // 更新状态
             if (isExporting) {
                 extractSpectrumFromBuffer(audioCurrentTime);
             } else if (isPlaying) {
@@ -344,16 +345,16 @@
                 for(let i=0; i<dataArray.length; i++) { dataArray[i] = Math.max(0, dataArray[i] - 4); }
             }
 
-            // --- 修改点：右半侧布局 (头像和频谱) ---
-            // 将头像 X 坐标定在 920 (靠右)，Y 坐标 320 (稍微偏上一点点给频谱留空间)
-            let avX = 920, avY = 320, avR = 140; 
+            // 【修改点】右侧布局坐标适配 1080P
+            // 头像 X 坐标定在 1380 (靠右)，Y 坐标 480 (屏幕中上方)
+            let avX = 1380, avY = 480, avR = 210; 
             if (isPlaying || isExporting) { avatarRotation += 0.015; }
 
             // 3. 绘制头像
             if (avaImg.src && avaImg.width > 0) {
                 rCtx.save();
                 rCtx.shadowColor = "rgba(0, 242, 254, 0.25)";
-                rCtx.shadowBlur = 40;
+                rCtx.shadowBlur = 60; // 放大阴影
                 rCtx.beginPath();
                 rCtx.arc(avX, avY, avR, 0, Math.PI * 2);
                 rCtx.closePath();
@@ -365,7 +366,7 @@
                 
                 rCtx.save();
                 rCtx.strokeStyle = "rgba(255,255,255,0.2)";
-                rCtx.lineWidth = 4;
+                rCtx.lineWidth = 6;
                 rCtx.beginPath();
                 rCtx.arc(avX, avY, avR, 0, Math.PI * 2);
                 rCtx.stroke();
@@ -374,71 +375,72 @@
             
             // 4. 绘制频谱
             rCtx.save();
-            let barWidth = 4;
-            let gap = 3;
-            // 频谱中心对齐头像中心
+            let barWidth = 6; // 加宽柱子
+            let gap = 4;
             let startX = avX - (dataArray.length * (barWidth + gap)) / 4;
-            let startY = 560; // 频谱在右侧头像下方
-            const gradient = rCtx.createLinearGradient(0, startY, 0, startY - 100);
+            let startY = 840; // 频谱在 1080P 下拉低位置
+            const gradient = rCtx.createLinearGradient(0, startY, 0, startY - 150);
             gradient.addColorStop(0, 'rgba(0, 242, 254, 0.1)');
             gradient.addColorStop(1, 'rgba(79, 172, 254, 0.95)');
             
             dataArray.forEach((val, i) => {
                 if(i % 2 === 0) { 
-                    let h = (val / 255) * 100;
-                    if (h < 4 && (isPlaying || isExporting)) h = 4; 
+                    // 高度映射放大
+                    let h = (val / 255) * 150; 
+                    if (h < 6 && (isPlaying || isExporting)) h = 6; 
                     rCtx.fillStyle = gradient;
                     rCtx.fillRect(startX + i*(barWidth+gap)/2, startY - h, barWidth, h);
                 }
             });
             rCtx.restore();
 
-            // --- 修改点：左半侧布局 (滚动字幕) ---
+            // 5. 左侧滚动字幕布局适配 1080P
             if (subtitleData.length > 0) {
                 rCtx.save();
-                // 限制字幕只在左侧 0-680 的区域显示，防止太长侵入右边
+                // 裁剪区域扩大，适应 1080P 左半边
                 rCtx.beginPath();
-                rCtx.rect(40, 0, 640, 720); 
+                rCtx.rect(60, 0, 960, 1080); 
                 rCtx.clip();
                 
                 rCtx.textAlign = "left";
                 rCtx.textBaseline = "middle";
                 
-                // 计算平滑滚动
-                let targetY = currentSubIndex >= 0 ? currentSubIndex * 60 : 0; 
+                // 行间距放大到 90
+                let targetY = currentSubIndex >= 0 ? currentSubIndex * 90 : 0; 
                 if (isPlaying || isExporting) {
-                    lyricScrollY += (targetY - lyricScrollY) * 0.1; // 缓动插值
+                    lyricScrollY += (targetY - lyricScrollY) * 0.1; 
                 } else {
-                    lyricScrollY = targetY; // 暂停时直接归位
+                    lyricScrollY = targetY; 
                 }
                 
                 subtitleData.forEach((sub, i) => {
-                    // 360 是屏幕垂直中心，每行间距 60
-                    let y = 360 + (i * 60) - lyricScrollY; 
+                    // 540 是 1080P 的垂直正中心
+                    let y = 540 + (i * 90) - lyricScrollY; 
                     
-                    // 根据距离中心点的远近计算透明度，实现上下淡出效果
-                    let distance = Math.abs(y - 360);
-                    let alpha = Math.max(0, 1 - distance / 250);
+                    // 增加渐变的衰减距离 (适配 1080P 高度)
+                    let distance = Math.abs(y - 540);
+                    let alpha = Math.max(0, 1 - distance / 380);
                     
                     if (alpha > 0.02) {
                         if (i === currentSubIndex) {
-                            rCtx.font = "bold 34px -apple-system, BlinkMacSystemFont, sans-serif";
+                            // 主字幕字号放大
+                            rCtx.font = "bold 50px -apple-system, BlinkMacSystemFont, sans-serif";
                             rCtx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
                             rCtx.shadowColor = "rgba(0, 242, 254, 0.5)";
-                            rCtx.shadowBlur = 15;
+                            rCtx.shadowBlur = 20;
                         } else {
-                            rCtx.font = "26px -apple-system, BlinkMacSystemFont, sans-serif";
+                            // 副字幕字号放大
+                            rCtx.font = "38px -apple-system, BlinkMacSystemFont, sans-serif";
                             rCtx.fillStyle = `rgba(255, 255, 255, ${alpha * 0.4})`;
                             rCtx.shadowBlur = 0;
                         }
-                        // 画在 X = 80 的位置，最大宽度 560
-                        rCtx.fillText(sub.content, 80, y, 560);
+                        // X 起始坐标移到 120，最大行宽设为 840
+                        rCtx.fillText(sub.content, 120, y, 840);
                     }
                 });
                 rCtx.restore();
             }
 
-            // 同步渲染到网页预览小窗
             pCtx.clearRect(0, 0, pCanvas.width, pCanvas.height);
             pCtx.drawImage(rCanvas, 0, 0, pCanvas.width, pCanvas.height);
         }
@@ -530,7 +532,7 @@
                     };
                     container.appendChild(div);
                 }
-                if (subtitleData.length > 0 && !isPlaying) renderFrame(); // 刷新预览
+                if (subtitleData.length > 0 && !isPlaying) renderFrame(); 
             };
             reader.readAsText(e.target.files[0]);
         };
@@ -542,7 +544,7 @@
                 if (audioCurrentTime >= sub.start && audioCurrentTime <= sub.end) {
                     found = true;
                     currentSubtitleText = sub.content;
-                    currentSubIndex = index; // 记录当前索引用于画板内的滚动
+                    currentSubIndex = index; 
                     
                     const currentActive = document.querySelector('.line.active');
                     if (currentActive && currentActive !== lines[index]) currentActive.classList.remove('active');
@@ -554,7 +556,6 @@
             });
             if(!found) {
                 currentSubtitleText = ""; 
-                // 此处不强制清理 currentSubIndex 使得间奏时字幕也能停留在最后一句不乱跳
             }
         }
 
@@ -578,7 +579,7 @@
                 workersPath: 'https://cdn.jsdelivr.net/npm/ccapture.js@1.1.0/src/',
                 framerate: FPS,
                 name: `Render_${Date.now()}`,
-                quality: 100 
+                quality: 60 
             });
             audioCurrentTime = 0;
             avatarRotation = 0;
