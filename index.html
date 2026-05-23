@@ -2,16 +2,14 @@
 <html lang="zh">
 <head>
     <meta charset="UTF-8">
-    <title>字幕可视化播放器 - 极速轻量渲染版</title>
-    <!-- 引入 CCapture 核心依赖库 -->
-    <script src="https://cdn.jsdelivr.net/npm/ccapture.js@1.1.0/build/CCapture.all.min.js"></script>
+    <title>字幕可视化播放器</title>
     <style>
         :root {
             --accent-color: #00f2fe; 
             --accent-gradient: linear-gradient(135deg, #00f2fe 0%, #4facfe 100%);
-            --card-bg: rgba(255, 255, 255, 0.04);       
-            --card-border: rgba(255, 255, 255, 0.12);   
-            --control-bg: rgba(20, 20, 25, 0.75);
+            --card-bg: rgba(255, 255, 255, 0.04);       /* 核心卡片的磨砂质感背景 */
+            --card-border: rgba(255, 255, 255, 0.12);   /* 卡片高级微光边框 */
+            --control-bg: rgba(20, 20, 25, 0.6);
         }
 
         body { 
@@ -19,14 +17,15 @@
             background: #060608; 
             color: #f5f5f7; 
             display: flex; 
-            align-items: center;      
-            justify-content: center;   
+            align-items: center;      /* 确保核心卡片上下居中 */
+            justify-content: center;   /* 确保核心卡片左右居中 */
             height: 100vh; 
             overflow: hidden; 
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
             letter-spacing: 0.5px;
         }
         
+        /* 底层全局背景 */
         #bg { 
             position: fixed; 
             width: 100%; 
@@ -45,28 +44,31 @@
             background: radial-gradient(circle at center, rgba(10,10,12,0.2) 0%, #060608 100%);
         }
         
+        /* 【核心修改】：上层二次背景大卡片框 */
         .main-container {
-            width: 88vw;            
-            height: 82vh;           
+            width: 88vw;            /* 限制总宽度，不让内容死贴屏幕边缘 */
+            height: 82vh;           /* 限制总高度 */
             max-width: 1400px;
             max-height: 850px;
             background: var(--card-bg);
-            backdrop-filter: blur(25px) saturate(120%); 
+            backdrop-filter: blur(25px) saturate(120%); /* 卡片内部的背景更亮、更通透 */
             -webkit-backdrop-filter: blur(25px) saturate(120%);
             border: 1px solid var(--card-border);
-            border-radius: 32px;    
-            box-shadow: 0 40px 100px rgba(0, 0, 0, 0.6), 0 0 80px rgba(255, 255, 255, 0.02) inset; 
+            border-radius: 32px;    /* 优雅的大圆角 */
+            box-shadow: 0 40px 100px rgba(0, 0, 0, 0.6), 
+                        0 0 80px rgba(255, 255, 255, 0.02) inset; /* 增加精致的内发光 */
             display: flex;
             overflow: hidden;
             position: relative;
             z-index: 1;
         }
         
+        /* 左侧字幕区排版优化 */
         .left { 
             width: 45%; 
             height: 100%; 
             overflow-y: auto; 
-            padding: 60px 40px 60px 80px; 
+            padding: 60px 40px 60px 80px; /* 加大左内边距 (80px)，把SRT字幕优雅地往右推，不再挨着死左边 */
             box-sizing: border-box;
             scroll-behavior: smooth;
             -ms-overflow-style: none;
@@ -74,6 +76,7 @@
         }
         .left::-webkit-scrollbar { display: none; }
         
+        /* 字幕样式 */
         .line { 
             font-size: 22px; 
             margin: 32px 0; 
@@ -83,6 +86,9 @@
             cursor: pointer;
             line-height: 1.4;
         }
+        .line:hover {
+            color: rgba(255,255,255,0.6);
+        }
         .line.active { 
             color: #fff; 
             font-size: 32px; 
@@ -91,46 +97,57 @@
             transform: scale(1.02);
         }
         
+        /* 右侧视觉区排版优化 */
         .right { 
             width: 55%; 
             display: flex; 
             flex-direction: column; 
             align-items: center; 
             justify-content: center; 
-            padding: 0 40px; 
+            padding-right: 40px; /* 让右侧内容稍微向右收紧对齐 */
             box-sizing: border-box;
-            cursor: pointer;
         }
         
-        #renderCanvas { display: none; }
-
-        #previewCanvas {
-            width: 100%; 
-            max-width: 680px; 
-            height: auto;
-            aspect-ratio: 16 / 9;
-            border-radius: 20px;
-            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
-            background: #000;
+        /* 头像设计 */
+        #avatar { 
+            width: 260px; 
+            height: 260px; 
+            border-radius: 50%; 
+            border: 2px solid rgba(255,255,255,0.15); 
+            box-shadow: 0 30px 60px rgba(0,0,0,0.5), 0 0 40px rgba(0, 242, 254, 0.1);
+            margin-bottom: 50px; 
+            object-fit: cover;
+        }
+        .spinning { animation: spin 25s linear infinite; }
+        .paused { animation-play-state: paused; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        
+        #audioPlayer { display: none; }
+        
+        /* 动画波形 */
+        canvas { 
+            width: 80%; 
+            height: 90px; 
+            background: transparent;
         }
         
+        /* 控制面板——嵌入卡片左下角 */
         .controls { 
             position: absolute; 
             bottom: 30px; 
             left: 40px; 
             background: var(--control-bg); 
-            backdrop-filter: blur(15px);
-            -webkit-backdrop-filter: blur(15px);
-            padding: 20px; 
-            border-radius: 24px; 
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            padding: 16px 20px; 
+            border-radius: 20px; 
             display: grid; 
-            gap: 12px; 
-            border: 1px solid rgba(255,255,255,0.1);
-            box-shadow: 0 15px 35px rgba(0,0,0,0.4);
+            gap: 10px; 
+            border: 1px solid rgba(255,255,255,0.08);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
             z-index: 10;
             font-size: 13px;
             color: rgba(255,255,255,0.6);
-            min-width: 260px;
         }
         .controls label {
             display: flex;
@@ -155,29 +172,7 @@
             font-weight: 500;
         }
 
-        .export-btn {
-            background: var(--accent-gradient);
-            color: #000;
-            border: none;
-            padding: 10px 15px;
-            border-radius: 10px;
-            font-weight: bold;
-            cursor: pointer;
-            transition: 0.3s;
-            margin-top: 5px;
-            box-shadow: 0 4px 15px rgba(0, 242, 254, 0.3);
-        }
-        .export-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(0, 242, 254, 0.5);
-        }
-        .export-btn:disabled {
-            background: #444;
-            color: #888;
-            box-shadow: none;
-            cursor: not-allowed;
-        }
-
+        /* 播放状态 */
         .play-status {
             margin-top: 4px;
             padding-top: 8px;
@@ -198,6 +193,7 @@
         .status-dot.blink { animation: blink 1.5s infinite; }
         @keyframes blink { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
 
+        /* 右下角提示 */
         .tips {
             position: absolute;
             bottom: 30px;
@@ -209,262 +205,94 @@
     </style>
 </head>
 <body>
+    <!-- 最底层全局弱背景 -->
     <img id="bg" src="">
     <div class="overlay"></div>
     
-    <div class="main-container">
+    <!-- 【核心新增】：上层二次背景卡片框容器 -->
+    <div class="main-container" id="playZone" title="点击空白处播放/暂停">
+        
+        <!-- 左侧字幕：内边距已优化，完美移出最左侧死角 -->
         <div class="left" id="lyrics"></div>
         
-        <div class="right" id="playZone" title="点击预览区播放/暂停">
-            <canvas id="previewCanvas"></canvas>
-            <canvas id="renderCanvas"></canvas>
+        <!-- 右侧内容：布局微调，与左侧形成完美的中轴对称平衡 -->
+        <div class="right">
+            <img id="avatar" src="" class="spinning paused">
+            <audio id="audioPlayer"></audio>
+            <canvas id="visualizer"></canvas>
         </div>
 
+        <!-- 悬浮在卡片左下角的操控台 -->
         <div class="controls" onclick="event.stopPropagation();">
             <label>背景: <span class="file-custom">选择图片</span><input type="file" id="bgInput" accept="image/*"></label>
             <label>头像: <span class="file-custom">选择图片</span><input type="file" id="avaInput" accept="image/*"></label>
             <label>字幕: <span class="file-custom">选择字幕</span><input type="file" id="subInput" accept=".vtt,.srt"></label>
             <label>音频: <span class="file-custom">选择音频</span><input type="file" id="audioInput" accept="audio/*"></label>
-            
-            <button class="export-btn" id="exportBtn" disabled>使用 CCapture 后台挂机导出</button>
-
             <div class="play-status">
                 <span class="status-dot" id="statusDot"></span>
-                <span id="statusText">等待上传音频素材...</span>
+                <span id="statusText">已暂停</span>
             </div>
         </div>
 
-        <div class="tips">提示：升级支持缩小/切后台挂机渲染</div>
+        <div class="tips">提示：点击卡片右侧空白或按 [空格键] 播放/暂停</div>
     </div>
 
     <script>
         let subtitleData = [];
+        const audio = document.getElementById('audioPlayer');
+        const avatar = document.getElementById('avatar');
         const statusDot = document.getElementById('statusDot');
         const statusText = document.getElementById('statusText');
-        const exportBtn = document.getElementById('exportBtn');
 
-        const rCanvas = document.getElementById('renderCanvas');
-        const rCtx = rCanvas.getContext('2d');
-        const pCanvas = document.getElementById('previewCanvas');
-        const pCtx = pCanvas.getContext('2d');
+        // 默认透明底色占位
+        document.getElementById('bg').src = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+        avatar.src = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 
-        let bgImg = new Image();
-        let avaImg = new Image();
-        let currentSubtitleText = "";
-        let avatarRotation = 0;
-        
-        let audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        let analyser = audioCtx.createAnalyser();
-        analyser.fftSize = 256;
-        analyser.connect(audioCtx.destination);
-        
-        let audioBuffer = null;        
-        let audioSource = null;        
-        let audioStartTime = 0;        
-        let audioCurrentTime = 0;      
-        let isPlaying = false;
-        let dataArray = new Uint8Array(analyser.frequencyBinCount);
-
-        let capturer = null;
-        let isExporting = false;
-        let bgWorker = null; 
-        
-        // 【核心修改点 1】：强行压缩帧率到最低能容忍的 20 帧，直接暴砍计算量
-        const FPS = 20; 
-
-        // 【核心修改点 2】：主画布和预览画布锁定在 720P 低档分辨率
-        rCanvas.width = 1280; rCanvas.height = 720;
-        pCanvas.width = 1280; pCanvas.height = 720;
-
-        function drawFrameLoop() {
-            if (!isExporting) {
-                renderFrame();
-                requestAnimationFrame(drawFrameLoop);
-            }
-        }
-        drawFrameLoop();
-
+        // 文件加载
         document.getElementById('bgInput').onchange = (e) => {
-            if(e.target.files[0]) bgImg.src = URL.createObjectURL(e.target.files[0]);
-        };
+            if(e.target.files[0]) document.getElementById('bg').src = URL.createObjectURL(e.target.files[0]);
+        }
         document.getElementById('avaInput').onchange = (e) => {
-            if(e.target.files[0]) avaImg.src = URL.createObjectURL(e.target.files[0]);
-        };
-
+            if(e.target.files[0]) avatar.src = URL.createObjectURL(e.target.files[0]);
+        }
         document.getElementById('audioInput').onchange = (e) => {
-            const file = e.target.files[0];
-            if(!file) return;
-
-            statusText.innerText = "音频底层高精解码中...";
-            exportBtn.disabled = true;
-            if(isPlaying) { stopAudio(); }
-
-            const reader = new FileReader();
-            reader.onload = function(evt) {
-                const arrayBuffer = evt.target.result;
-                audioCtx.decodeAudioData(arrayBuffer, function(buffer) {
-                    audioBuffer = buffer;
-                    audioCurrentTime = 0;
-                    exportBtn.disabled = false;
-                    statusText.innerText = "素材加载成功！点击预览区播放";
-                    statusDot.classList.remove('blink');
-                }, function(err) {
-                    statusText.innerText = "解码失败";
-                });
-            };
-            reader.readAsArrayBuffer(file);
+            if(e.target.files[0]) {
+                audio.src = URL.createObjectURL(e.target.files[0]);
+                setupVisualizer();
+                togglePlay(true);
+            }
         };
 
-        function renderFrame() {
-            rCtx.fillStyle = "#060608";
-            rCtx.fillRect(0, 0, 1280, 720);
-
-            if (bgImg.src && bgImg.width > 0) {
-                rCtx.save();
-                rCtx.globalAlpha = 0.25;
-                // 【核心修改点 3】：背景尺寸按 720P 重新适配
-                let scale = Math.max(1280 / bgImg.width, 720 / bgImg.height);
-                let w = bgImg.width * scale;
-                let h = bgImg.height * scale;
-                rCtx.drawImage(bgImg, (1280 - w)/2, (720 - h)/2, w, h);
-                rCtx.restore();
-            }
-
-            // 【核心修改点 4】：头像位置按 720P 进行比例缩小调整居中
-            let avX = 640, avY = 280, avR = 120; 
-            if (isPlaying || isExporting) { avatarRotation += 0.015; }
-
-            if (avaImg.src && avaImg.width > 0) {
-                rCtx.save();
-                rCtx.shadowColor = "rgba(0, 242, 254, 0.25)";
-                rCtx.shadowBlur = 40;
-                rCtx.beginPath();
-                rCtx.arc(avX, avY, avR, 0, Math.PI * 2);
-                rCtx.closePath();
-                rCtx.clip();
-                rCtx.translate(avX, avY);
-                rCtx.rotate(avatarRotation);
-                rCtx.drawImage(avaImg, -avR, -avR, avR*2, avR*2);
-                rCtx.restore();
-                
-                rCtx.save();
-                rCtx.strokeStyle = "rgba(255,255,255,0.2)";
-                rCtx.lineWidth = 4;
-                rCtx.beginPath();
-                rCtx.arc(avX, avY, avR, 0, Math.PI * 2);
-                rCtx.stroke();
-                rCtx.restore();
-            }
-
-            if (isExporting) {
-                extractSpectrumFromBuffer(audioCurrentTime);
-            } else if (isPlaying) {
-                analyser.getByteFrequencyData(dataArray);
-                audioCurrentTime = audioCtx.currentTime - audioStartTime;
-                if (audioCurrentTime >= audioBuffer.duration) { stopAudio(); }
-                updateSubtitleProgress();
+        // 播控逻辑
+        function togglePlay(forcePlay = null) {
+            if (forcePlay === true || audio.paused) {
+                audio.play().then(() => {
+                    avatar.classList.remove('paused');
+                    statusDot.classList.add('blink');
+                    statusText.innerText = "正在播放";
+                }).catch(() => {});
             } else {
-                for(let i=0; i<dataArray.length; i++) { dataArray[i] = Math.max(0, dataArray[i] - 4); }
-            }
-            
-            rCtx.save();
-            let barWidth = 4;
-            let gap = 3;
-            let startX = avX - (dataArray.length * (barWidth + gap)) / 4;
-            // 【核心修改点 5】：频谱跳动基准线下移到 720P 适配的高度
-            let startY = 550;
-
-            const gradient = rCtx.createLinearGradient(0, startY, 0, startY - 100);
-            gradient.addColorStop(0, 'rgba(0, 242, 254, 0.1)');
-            gradient.addColorStop(1, 'rgba(79, 172, 254, 0.95)');
-
-            dataArray.forEach((val, i) => {
-                if(i % 2 === 0) { 
-                    let h = (val / 255) * 100;
-                    if (h < 4 && (isPlaying || isExporting)) h = 4; 
-                    rCtx.fillStyle = gradient;
-                    rCtx.fillRect(startX + i*(barWidth+gap)/2, startY - h, barWidth, h);
-                }
-            });
-            rCtx.restore();
-
-            if (currentSubtitleText) {
-                rCtx.save();
-                // 稍微减小字体以适应 720P 屏幕大小
-                rCtx.font = "bold 38px -apple-system, BlinkMacSystemFont, sans-serif";
-                rCtx.fillStyle = "#ffffff";
-                rCtx.shadowColor = "rgba(0, 242, 254, 0.5)";
-                rCtx.shadowBlur = 15;
-                rCtx.textAlign = "center";
-                // 【核心修改点 6】：字幕位置适配 720P 底部中轴线
-                rCtx.fillText(currentSubtitleText, avX, 640);
-                rCtx.restore();
-            }
-
-            pCtx.clearRect(0, 0, pCanvas.width, pCanvas.height);
-            pCtx.drawImage(rCanvas, 0, 0, pCanvas.width, pCanvas.height);
-        }
-
-        function extractSpectrumFromBuffer(time) {
-            if (!audioBuffer) return;
-            const sampleRate = audioBuffer.sampleRate;
-            const startSample = Math.floor(time * sampleRate);
-            const channelData = audioBuffer.getChannelData(0); 
-            
-            let windowSize = 256;
-            for (let i = 0; i < dataArray.length; i++) {
-                let sampleIdx = startSample + i * 2;
-                let val = 0;
-                if (sampleIdx < channelData.length) {
-                    val = Math.abs(channelData[sampleIdx]) * 350;
-                }
-                let target = Math.min(255, val * (1 + i / 32));
-                dataArray[i] = dataArray[i] * 0.4 + target * 0.6; 
+                audio.pause();
+                avatar.classList.add('paused');
+                statusDot.classList.remove('blink');
+                statusText.innerText = "已暂停";
             }
         }
 
-        function playAudio(startAt = 0) {
-            if (!audioBuffer) return;
-            if (audioCtx.state === 'suspended') audioCtx.resume();
+        // 点击大卡片区域控制播放
+        document.getElementById('playZone').onclick = (e) => {
+            togglePlay();
+        };
 
-            audioSource = audioCtx.createBufferSource();
-            audioSource.buffer = audioBuffer;
-            audioSource.connect(analyser);
-            
-            audioStartTime = audioCtx.currentTime - startAt;
-            audioSource.start(0, startAt);
-            isPlaying = true;
-            statusDot.classList.add('blink');
-            statusText.innerText = "正在播放";
-        }
-
-        function stopAudio() {
-            if (audioSource) {
-                try { audioSource.stop(); } catch(e){}
-                audioSource.disconnect();
-                audioSource = null;
-            }
-            isPlaying = false;
-            statusDot.classList.remove('blink');
-            statusText.innerText = "已暂停";
-        }
-
-        function togglePlay() {
-            if (isExporting || !audioBuffer) return;
-            if (isPlaying) {
-                audioCurrentTime = audioCtx.currentTime - audioStartTime;
-                stopAudio();
-            } else {
-                if (audioCurrentTime >= audioBuffer.duration) audioCurrentTime = 0;
-                playAudio(audioCurrentTime);
-            }
-        }
-
-        document.getElementById('playZone').onclick = () => togglePlay();
+        // 空格键支持
         window.addEventListener('keydown', (e) => {
-            if (e.code === "Space") { e.preventDefault(); togglePlay(); }
+            if (e.code === "Space") {
+                e.preventDefault();
+                togglePlay();
+            }
         });
 
+        // 字幕解析 (全面兼容 SRT 与 VTT 换行)
         document.getElementById('subInput').onchange = (e) => {
             if(!e.target.files[0]) return;
             const reader = new FileReader();
@@ -476,122 +304,91 @@
 
                 const regex = /(\d{2}:\d{2}:\d{2}[\.,]\d{3}) --> (\d{2}:\d{2}:\d{2}[\.,]\d{3})\s*\n([\s\S]*?)(?=\n\n|\n\d|\n\d{2}:|$)/g;
                 let match;
+                let index = 0;
                 while ((match = regex.exec(text)) !== null) {
                     const start = timeToSec(match[1]);
                     const end = timeToSec(match[2]);
                     const content = match[3].replace(/\r?\n/g, " ").trim();
+                    
                     subtitleData.push({ start, end, content });
                     
                     const div = document.createElement('div');
                     div.className = 'line';
                     div.innerText = content;
+                    
                     div.onclick = (event) => {
-                        event.stopPropagation();
-                        audioCurrentTime = start;
-                        if (isPlaying) { stopAudio(); playAudio(start); } else { updateSubtitleProgress(); }
+                        event.stopPropagation(); // 阻止触发背景点击暂停
+                        audio.currentTime = start;
+                        togglePlay(true);
                     };
                     container.appendChild(div);
+                    index++;
                 }
             };
             reader.readAsText(e.target.files[0]);
         };
 
-        function updateSubtitleProgress() {
+        // 字幕同步滚动
+        audio.ontimeupdate = () => {
             const lines = document.querySelectorAll('.line');
-            let found = false;
             subtitleData.forEach((sub, index) => {
-                if (audioCurrentTime >= sub.start && audioCurrentTime <= sub.end) {
-                    found = true;
-                    currentSubtitleText = sub.content;
+                if (audio.currentTime >= sub.start && audio.currentTime <= sub.end) {
                     const currentActive = document.querySelector('.line.active');
-                    if (currentActive && currentActive !== lines[index]) currentActive.classList.remove('active');
+                    if (currentActive && currentActive !== lines[index]) {
+                        currentActive.classList.remove('active');
+                    }
                     if (!lines[index].classList.contains('active')) {
                         lines[index].classList.add('active');
                         lines[index].scrollIntoView({ behavior: 'smooth', block: 'center' });
                     }
                 }
             });
-            if(!found) currentSubtitleText = ""; 
-        }
+        };
 
         function timeToSec(t) {
             const parts = t.split(/:|[\.,]/);
             return parseInt(parts[0])*3600 + parseInt(parts[1])*60 + parseInt(parts[2]) + parseInt(parts[3])/1000;
         }
 
-        exportBtn.onclick = function(e) {
-            e.stopPropagation();
-            if (isExporting || !audioBuffer) return;
+        // 极光渐变波形逻辑
+        let isVisualizerSetup = false;
+        function setupVisualizer() {
+            if (isVisualizerSetup) return;
+            isVisualizerSetup = true;
 
-            isExporting = true;
-            exportBtn.disabled = true;
-            stopAudio();
-
-            statusDot.classList.add('blink');
-            statusText.innerText = "后台沙盒引擎初始化...";
-
-            capturer = new CCapture({ 
-                format: 'webm', 
-                workersPath: 'https://cdn.jsdelivr.net/npm/ccapture.js@1.1.0/src/',
-                framerate: FPS,
-                name: `Render_${Date.now()}`,
-                // 【核心修改点 7】：质量设在 50，极速编码，配合 FFmpeg 重新升码率不影响清晰度
-                quality: 30 
-            });
-
-            audioCurrentTime = 0;
-            avatarRotation = 0;
-            capturer.start();
-
-            const workerCode = `
-                self.onmessage = function(e) {
-                    if (e.data === 'next') {
-                        setTimeout(function() { self.postMessage('tick'); }, 0);
-                    }
-                };
-            `;
-            const blob = new Blob([workerCode], { type: 'application/javascript' });
-            bgWorker = new Worker(URL.createObjectURL(blob));
-
-            function renderStep() {
-                if (!isExporting) return;
-
-                renderFrame();
-                updateSubtitleProgress();
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const analyser = ctx.createAnalyser();
+            analyser.fftSize = 256; 
+            analyser.connect(ctx.destination);
+            const source = ctx.createMediaElementSource(audio);
+            source.connect(analyser);
+            
+            const canvas = document.getElementById('visualizer');
+            const canvasCtx = canvas.getContext('2d');
+            const data = new Uint8Array(analyser.frequencyBinCount);
+            
+            function draw() {
+                requestAnimationFrame(draw);
+                analyser.getByteFrequencyData(data);
+                canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
                 
-                capturer.capture(rCanvas);
+                const barWidth = (canvas.width / data.length) * 1.8;
+                let barHeight;
+                let x = 0;
 
-                audioCurrentTime += 1 / FPS;
-
-                if (audioCurrentTime >= audioBuffer.duration) {
-                    statusText.innerText = "打包封装中，请不要关闭网页...";
-                    
-                    bgWorker.terminate();
-                    bgWorker = null;
-
-                    capturer.stop();
-                    capturer.save();
-                    
-                    isExporting = false;
-                    exportBtn.disabled = false;
-                    audioCurrentTime = 0;
-                    statusText.innerText = "后台无损视频合成完毕！";
-                    drawFrameLoop(); 
-                } else {
-                    let progress = ((audioCurrentTime / audioBuffer.duration) * 100).toFixed(1);
-                    statusText.innerText = `[可切后台挂机] 视频合成中: ${progress}%`;
-                    bgWorker.postMessage('next');
-                }
+                const gradient = canvasCtx.createLinearGradient(0, canvas.height, 0, 0);
+                gradient.addColorStop(0, 'rgba(0, 242, 254, 0.15)');
+                gradient.addColorStop(1, 'rgba(79, 172, 254, 0.95)');
+                
+                data.forEach((val) => {
+                    barHeight = (val / 255) * canvas.height * 0.85;
+                    canvasCtx.fillStyle = gradient;
+                    canvasCtx.fillRect(x, canvas.height - barHeight, barWidth - 2, barHeight);
+                    x += barWidth;
+                });
             }
-
-            bgWorker.onmessage = function(e) {
-                if (e.data === 'tick') {
-                    renderStep();
-                }
-            };
-
-            bgWorker.postMessage('next');
-        };
+            draw();
+        }
     </script>
 </body>
 </html>
