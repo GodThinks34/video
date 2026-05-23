@@ -268,7 +268,7 @@
         let capturer = null;
         let isExporting = false;
         let bgWorker = null; // 后台防休眠独立线程驱动器
-        const FPS = 60; 
+        const FPS = 25; 
 
         pCanvas.width = 1920; pCanvas.height = 1080;
 
@@ -532,7 +532,7 @@
                 workersPath: 'https://cdn.jsdelivr.net/npm/ccapture.js@1.1.0/src/',
                 framerate: FPS,
                 name: `Render_${Date.now()}`,
-                quality: 100 
+                quality: 50 
             });
 
             audioCurrentTime = 0;
